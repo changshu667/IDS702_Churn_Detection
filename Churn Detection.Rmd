@@ -1,0 +1,836 @@
+---
+title: "Final Project"
+author: "Chang Shu"
+date: "2018/11/24"
+output: pdf_document
+---
+# Background
+Attrition in HR:
+A major problem of high employee attrition is its cost to an organization. Job postings, hiring processes, paperwork and new hire training are some of the common expenses of losing employees and replacing them. Management department of an organization always wants to figure out what factors influence employees' attrition, in this way they could work out better strategy to retain excellent employees.
+
+# Questions
+Main Questions:
+Is there evidence that employees who have worse work life balance tend to have higher probability to leave their company? 
+Is there evidence that the effects differ by job level? 
+Is there evidence that the effects differ by job role? 
+
+Other questions of interest:
+What are other important predictors lead to employees' attrition?
+How is the attrition rate in different job roles or different job levels? 
+
+
+# Dataset
+This is a fictional dataset provided by IBM data scientists.
+1470 rows, 35 variables
+Samples of Variables: Age, Education, Education Field, Job level, Job Role, Environmental Satisfaction, Job satisfaction, MonthlyIncome, Percent of Salary Hike
+
+# Variables
+### Personal Information 
+Age, Gender, Education, Education Field, Marital Status, Total working years
+### Job Role Related
+Department, Job level, Job Role, Year at company, Number of companies worked, Business travel, Distance from home, Over Time, Work life balance, 
+### Subjective feeling 
+Environmental Satisfaction, Job satisfaction, Relation satisfaction, 
+### Others' evaluation
+Job Involvement, Performance Rating
+### Income
+DailyRate, MonthlyRate, MonthlyIncome, Percent Salary Hike, Stock option level, 
+### Career development
+Training time last year, Year in current role, Years since last promotion, Years with current manager
+
+# Limitation
+1. For outcome variable, the "attrition" one is not balanced. 16.1% of the datapoint correspond to "Yes" and 83.9% of the datapoint correspond to "No".
+2. Since the dataset just contains 1470 cases, there are some unbalanced groups in our dataset (For performance rating: only 15.1% of employees received score 4, And for employees??? department,  65.4% comes from Research&Development Department ). This would cause harm to a classification model like logistic regression. If we could collect more data, we will do better on capturing sufficient patterns of subsets.
+
+
+
+```{r}
+library(gdata)
+library(arm)
+library(pROC)
+library(ggcorrplot)
+library(tidyverse)
+hr = read.csv("/Users/wisophia/Documents/MIDS/2018 fall/IDS 702/final project/hrdataset.csv", header = T)
+```
+
+```{r}
+names(hr)
+```
+
+# Data Process
+```{r}
+# change "character" to "number" for "Attrition"
+hr$Attrition_D = rep(0,nrow(hr))
+hr$Attrition_D[hr$Attrition == "Yes"] = 1
+
+# change "character" to "number" for "BusinessTravel"
+hr$BusinessTravel_D = rep(0,nrow(hr))
+hr$BusinessTravel_D[hr$BusinessTravel == "Non-Travel"] = 0
+hr$BusinessTravel_D[hr$BusinessTravel == "Travel_Frequently"] = 1
+hr$BusinessTravel_D[hr$BusinessTravel == "Travel_Rarely"] = 2
+
+# change "character" to "number" for "Department"
+hr$Department_D = rep(0,nrow(hr))
+hr$Department_D[hr$Department == "Human Resources"] = 0
+hr$Department_D[hr$Department == "Research & Development"] = 1
+hr$Department_D[hr$Department == "Sales"] = 2
+
+# change "character" to "number" for "Education"
+hr$EducationField_D = rep(0,nrow(hr))
+hr$EducationField_D[hr$EducationField == "Human Resources"] = 0
+hr$EducationField_D[hr$EducationField == "Life Sciences"] = 1
+hr$EducationField_D[hr$EducationField == "Marketing"] = 2
+hr$EducationField_D[hr$EducationField == "Medical"] = 3
+hr$EducationField_D[hr$EducationField == "Other"] = 4
+hr$EducationField_D[hr$EducationField == "Technical Degree"] = 5
+
+# change "character" to "number" for "Gender"
+hr$Gender_D = rep(0,nrow(hr))
+hr$Gender_D[hr$Gender == "Female"] = 0
+hr$Gender_D[hr$Gender == "Male"] = 1
+
+# change "character" to "number" for "JobRole"
+hr$JobRole_D = rep(0,nrow(hr))
+hr$JobRole_D[hr$JobRole == "Sales Executive"] = 0
+hr$JobRole_D[hr$JobRole == "Research Scientist"] = 1
+hr$JobRole_D[hr$JobRole == "Laboratory Technician"] = 2
+hr$JobRole_D[hr$JobRole == "Manufacturing Director"] = 3
+hr$JobRole_D[hr$JobRole == "Healthcare Representative"] = 4
+hr$JobRole_D[hr$JobRole == "Manager"] = 5
+hr$JobRole_D[hr$JobRole == "Human Resources"] = 6
+hr$JobRole_D[hr$JobRole == "Research Director"] = 7
+hr$JobRole_D[hr$JobRole == "Sales Representative"] = 8
+
+# change "character" to "number" for "MaritalStatus"
+hr$MaritalStatus_D = rep(0,nrow(hr))
+hr$MaritalStatus_D[hr$MaritalStatus == "Divorced"] = 0
+hr$MaritalStatus_D[hr$MaritalStatus == "Married"] = 1
+hr$MaritalStatus_D[hr$MaritalStatus == "Single"] = 2
+
+# change "character" to "number" for "OverTime"
+hr$OverTime_D = rep(0,nrow(hr))
+hr$OverTime_D[hr$OverTime == "No"] = 0
+hr$OverTime_D[hr$OverTime == "Yes"] = 1
+```
+
+# Stacked bar plots of joblevel&jobrole on attrition
+```{r}
+library(ggplot2)
+# stacked bar plots of joblevel on attrition
+joblevel=hr %>% group_by(JobLevel,Attrition) %>% count()
+percentage=c(73.7,26.3,90.3,9.7,85.3,14.7,95.3,4.7, 92.8,7.2)
+newdataframe=data.frame(joblevel,percentage)
+
+fill = c("#6D9EC1", "#E46726")
+ggplot(data=joblevel,aes(y=percentage,x=JobLevel,fill=Attrition))+
+  geom_bar(stat="identity") + scale_fill_manual(values=fill) + geom_text(data=joblevel,aes(y=percentage,x=JobLevel, label = paste0(percentage,"%")), size=4) 
+
+# stacked bar plots of jobrole on attrition
+jobrole=hr %>% group_by(JobRole,Attrition) %>% count()
+percentage0=c(93.1,6.9,76.9,23.1,76.1,23.9,95.1,4.9, 93.1,6.9,97.5,2.5,83.9,16.1,82.5,17.5,60.2,39.8)
+newdataframe0=data.frame(jobrole,percentage0)
+
+fill = c("#6D9EC1", "#E46726")
+ggplot(data=jobrole,aes(y=percentage0,x=JobRole,fill=Attrition))+
+  geom_bar(stat="identity") + scale_fill_manual(values=fill) + geom_text(data=jobrole,aes(y=percentage0,x=JobRole, label = paste0(percentage0,"%")), size=4) + theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+# Draw correlation plot for all the variables
+```{r}
+library(ggcorrplot)
+hrnumeric = select_if(hr,is.numeric)
+m = cor(hrnumeric)
+ggcorrplot(m, hc.order = TRUE, type = "lower", outline.col = "white",
+   ggtheme = ggplot2::theme_gray,
+   colors = c("#6D9EC1", "white", "#E46726"), pch.cex = 5,
+tl.cex = 12, tl.col = "black", tl.srt = 45)
+```
+From the correlation plot, I check pairs of variables which has correlation coefficient larger than 0.7. I will keep them in the dataset now.
+(1)"Totallyworkingyear" and "Monthly income" , "joblevel" has a correlation of 0.8.
+(2)"Totallyworkingyear" and "Age" has a correlation of 0.7 which make sense.
+(3) "Job satisfaction" and "monthly income" has a correlation of 1, I will remove one of them.
+(4)"Performance rating" and "Percentsalaryhike" has a correlation of 0.8 which make sense.
+
+# Centering the continuous variables
+```{r}
+hr$Agec = hr$Age -  mean(hr$Age)
+hr$DailyRatec = hr$DailyRate - mean(hr$DailyRate)
+hr$DistanceFromHomec = hr$DistanceFromHome - mean(hr$DistanceFromHome)
+hr$HourlyRatec = hr$HourlyRate - mean(hr$HourlyRate)
+hr$MonthlyIncomec = hr$MonthlyIncome - mean(hr$MonthlyIncome)
+hr$MonthlyRatec = hr$MonthlyRate - mean(hr$MonthlyRate)
+hr$NumCompaniesWorkedc = hr$NumCompaniesWorked - mean(hr$NumCompaniesWorked)
+hr$PercentSalaryHikec = hr$PercentSalaryHike - mean(hr$PercentSalaryHike)
+hr$TrainingTimesLastYearc = hr$TrainingTimesLastYear - mean(hr$TrainingTimesLastYear)
+hr$TotalWorkingYearsc = hr$TotalWorkingYears - mean(hr$TotalWorkingYears)
+hr$YearsAtCompanyc = hr$YearsAtCompany - mean(hr$YearsAtCompany)
+hr$YearsInCurrentRolec = hr$YearsInCurrentRole - mean(hr$YearsInCurrentRole)
+hr$YearsSinceLastPromotionc = hr$YearsSinceLastPromotion - mean(hr$YearsSinceLastPromotion)
+hr$YearsWithCurrManagerc = hr$YearsWithCurrManager - mean(hr$YearsWithCurrManager)
+```
+
+# To check the multicollinearity
+```{r include=FALSE}
+# totalworkingyears ~ monthlyincome
+# R square: 0.806
+log3 = lm(TotalWorkingYearsc ~ as.factor(JobSatisfaction) + Agec + DailyRatec + DistanceFromHomec + HourlyRatec + MonthlyRatec + NumCompaniesWorkedc + PercentSalaryHikec + TrainingTimesLastYearc + YearsWithCurrManagerc + YearsSinceLastPromotionc + YearsInCurrentRolec + YearsAtCompanyc + as.factor(BusinessTravel_D) + as.factor(Department_D) + as.factor(Education) + as.factor(EducationField_D) + as.factor(EnvironmentSatisfaction) + as.factor(Gender_D) + as.factor(JobRole_D) + as.factor(JobInvolvement) + as.factor(JobLevel) + as.factor(MaritalStatus_D) + as.factor(OverTime_D) + as.factor(PerformanceRating) + as.factor(RelationshipSatisfaction) + as.factor(StockOptionLevel) + as.factor(WorkLifeBalance), data = hr, family = binomial)
+summary(log3)
+```
+
+```{r include=FALSE}
+# totalworkingyears ~ joblevel
+# R^2 is 0.809
+log4 = lm(TotalWorkingYearsc ~ as.factor(JobSatisfaction) + Agec + DailyRatec + DistanceFromHomec + HourlyRatec + MonthlyRatec + MonthlyIncome + NumCompaniesWorkedc + PercentSalaryHikec + TrainingTimesLastYearc + YearsWithCurrManagerc + YearsSinceLastPromotionc + YearsInCurrentRolec + YearsAtCompanyc + as.factor(BusinessTravel_D) + as.factor(Department_D) + as.factor(Education) + as.factor(EducationField_D) + as.factor(EnvironmentSatisfaction) + as.factor(Gender_D) + as.factor(JobRole_D) + as.factor(JobInvolvement) + as.factor(JobLevel) + as.factor(MaritalStatus_D) + as.factor(OverTime_D) + as.factor(PerformanceRating) + as.factor(RelationshipSatisfaction) + as.factor(StockOptionLevel) + as.factor(WorkLifeBalance), data = hr, family = binomial)
+summary(log4)
+```
+
+```{r include=FALSE}
+# totalworking years ~ Agec
+# R^2  is 0.809
+log5 = lm(TotalWorkingYearsc ~ as.factor(JobSatisfaction) + Agec + DailyRatec + DistanceFromHomec + HourlyRatec + MonthlyRatec + MonthlyIncome + NumCompaniesWorkedc + PercentSalaryHikec + TrainingTimesLastYearc + YearsWithCurrManagerc + YearsSinceLastPromotionc + YearsInCurrentRolec + YearsAtCompanyc + as.factor(BusinessTravel_D) + as.factor(Department_D) + as.factor(Education) + as.factor(EducationField_D) + as.factor(EnvironmentSatisfaction) + as.factor(Gender_D) + as.factor(JobRole_D) + as.factor(JobInvolvement) + as.factor(JobLevel) + as.factor(MaritalStatus_D) + as.factor(OverTime_D) + as.factor(PerformanceRating) + as.factor(RelationshipSatisfaction) + as.factor(StockOptionLevel) + as.factor(WorkLifeBalance), data = hr, family = binomial)
+summary(log5)
+```
+
+```{r include=FALSE}
+# performance rating ~ percent of salary hike
+# R^2 is 0.6112
+log6 = lm( PerformanceRating ~ as.factor(JobSatisfaction) + Agec + DailyRatec + DistanceFromHomec + HourlyRatec + MonthlyRatec + MonthlyIncome + NumCompaniesWorkedc + PercentSalaryHikec + TrainingTimesLastYearc + YearsWithCurrManagerc + YearsSinceLastPromotionc + YearsInCurrentRolec + TotalWorkingYearsc + YearsAtCompanyc + as.factor(BusinessTravel_D) + as.factor(Department_D) + as.factor(Education) + as.factor(EducationField_D) + as.factor(EnvironmentSatisfaction) + as.factor(Gender_D) + as.factor(JobRole_D) + as.factor(JobInvolvement) + as.factor(JobLevel) + as.factor(MaritalStatus_D) + as.factor(OverTime_D) + as.factor(RelationshipSatisfaction) + as.factor(StockOptionLevel) + as.factor(WorkLifeBalance), data = hr, family = binomial)
+summary(log6)
+```
+Since correlation coefficient between several predictors are more than 0.7, I suspect that they might have perfect linear association. To check this assumptionm, I fitted several linear regression models on "one of the predictor" on all other predictors. Since the R-squared of model "totalworkingyears~age" and "totalworkingyears~monthly income" are very close to 1, these two predictors do have perfect linear association.We would better remove one of them from each pair.
+
+Besides,  "monthly income", "age","job level" are some of the predictors of interest, I will delete "job satisfaction" and "total working years"
+
+# Do the EDA
+```{r}
+# first check with continuous variables 
+par(mfrow = c(2,2))
+boxplot(Age~Attrition_D, data = hr, ylab = "Age", xlab = "Attrition")
+boxplot(DailyRate~Attrition_D, data = hr, ylab = "Daily Rate", xlab = "Attrition")
+boxplot(DistanceFromHome~Attrition_D, data = hr, ylab = "Distance From Home", xlab = "Attrition")
+boxplot(HourlyRate~Attrition_D, data = hr, ylab = "Hourly Rate", xlab = "Attrition")
+boxplot(MonthlyIncome~Attrition_D, data = hr, ylab = "Monthly Income", xlab = "Attrition")
+boxplot(MonthlyRate~Attrition_D, data = hr, ylab = "Monthly Rate", xlab = "Attrition")
+boxplot(NumCompaniesWorked~Attrition_D, data = hr, ylab = "Number of Companies Worked", xlab = "Attrition")
+boxplot(PercentSalaryHike~Attrition_D, data = hr, ylab = "Percent of Salary Hike", xlab = "Attrition")
+boxplot(TrainingTimesLastYear~Attrition_D, data = hr, ylab = "Training Times Last Year", xlab = "Attrition")
+boxplot(YearsAtCompany~Attrition_D, data = hr, ylab = "Years At Company", xlab = "Attrition")
+boxplot(YearsInCurrentRole~Attrition_D, data = hr, ylab = "Years In Current Role", xlab = "Attrition")
+boxplot(YearsSinceLastPromotion~Attrition_D, data = hr, ylab = "Years Since Last Promotion", xlab = "Attrition")
+boxplot(YearsWithCurrManager~Attrition_D, data = hr, ylab = "Years With Current Manager", xlab = "Attrition")
+
+# check with catrgorical variables
+tapply(hr$Attrition_D, hr$BusinessTravel_D, mean)
+table(hr$BusinessTravel_D)
+
+tapply(hr$Attrition_D, hr$Department_D, mean)
+table(hr$Department_D)
+
+tapply(hr$Attrition_D, hr$Education, mean)
+table(hr$Education)
+
+tapply(hr$Attrition_D, hr$EducationField_D, mean)
+table(hr$EducationField_D)
+
+tapply(hr$Attrition_D, hr$EnvironmentSatisfaction, mean)
+table(hr$EnvironmentSatisfaction)
+
+tapply(hr$Attrition_D, hr$Gender_D, mean)
+table(hr$EnvironmentSatisfaction)
+
+tapply(hr$Attrition_D, hr$JobInvolvement, mean)
+table(hr$JobInvolvement)
+
+tapply(hr$Attrition_D, hr$JobLevel, mean)
+table(hr$JobLevel)
+
+tapply(hr$Attrition_D, hr$JobRole_D, mean)
+table(hr$JobRole_D)
+
+tapply(hr$Attrition_D, hr$MaritalStatus_D, mean)
+table(hr$MaritalStatus_D)
+
+tapply(hr$Attrition_D, hr$OverTime, mean)
+table(hr$OverTime)
+
+tapply(hr$Attrition_D, hr$PerformanceRating, mean)
+table(hr$PerformanceRating)
+
+tapply(hr$Attrition_D, hr$RelationshipSatisfaction, mean)
+table(hr$RelationshipSatisfaction)
+
+tapply(hr$Attrition_D, hr$StockOptionLevel, mean)
+table(hr$StockOptionLevel)
+
+tapply(hr$Attrition_D, hr$WorkLifeBalance, mean)
+table(hr$WorkLifeBalance)
+```
+???1???Very little differences in boxplots.
+The average of "distance from home" for attrition is a little bit higher than average of "distance from home" for no-attrition.
+The average of "Daily Rate" for non-attrition is higher than average of "Daily Rate" for attrition.
+The average of "Age" for non-attrition is higher than average of "Age" for attrition.
+The average of "Monthly Income" for non-attrition is higher than average of "Monthly Income" for attrition.
+The average of "Monthly Income" for non-attrition is higher than average of "Monthly Income" for attrition.
+The average of "Number of Companies worked" for non-attrition is higher than average of "Number of Companies worked" for attrition.
+
+(2) 
+For "Business Travel", the group for level 0,1 is relatively small.
+For "Department", the group for level 0 is relatively small.
+For "Education", the group for level 5 is relatively small.
+For "Performance Rating", level of data is unbalanced. 
+For "Stock Option Level", level of data is unbalanced. The group for level 4 is relatively small.
+For "Job Involvement", the group for level 1,4 is relatively small.
+For "Job Level", the group for level 5 is relatively small.
+For "Work life balance", the group for level 1 is relatively small.
+These may lead to some extreme plots later and I will pay more attention to them.
+
+# Checking possible transformation in binned plot with continuous variables
+```{r}
+par(mfrow = c(2,2))
+binnedplot(hr$Age, y = hr$Attrition_D, xlab = "Age", ylab = "Attrition")
+binnedplot(hr$DailyRate, y = hr$Attrition_D, xlab = "Daily Rate", ylab = "Attrition")
+binnedplot(hr$DistanceFromHome, y = hr$Attrition_D, xlab = "Distance From Home", ylab = "Attrition")
+binnedplot(hr$HourlyRate, y = hr$Attrition_D, xlab = "Hourly Rate", ylab = "Attrition")
+binnedplot(hr$MonthlyIncome, y = hr$Attrition_D, xlab = "Monthly Income", ylab = "Attrition")
+binnedplot(hr$MonthlyRate, y = hr$Attrition_D, xlab = "Monthly Rate", ylab = "Attrition")
+binnedplot(hr$NumCompaniesWorked, y = hr$Attrition_D, xlab = "Number of Companies Worked", ylab = "Attrition")
+binnedplot(hr$PercentSalaryHike, y = hr$Attrition_D, xlab = "Percent of Salary Hike", ylab = "Attrition")
+binnedplot(hr$TrainingTimesLastYear, y = hr$Attrition_D, xlab = "Training Times Last Year", ylab = "Attrition")
+binnedplot(hr$YearsAtCompany, y = hr$Attrition_D, xlab = "Years At Company", ylab = "Attrition")
+binnedplot(hr$YearsInCurrentRole, y = hr$Attrition_D, xlab = "Years In Current Role", ylab = "Attrition")
+binnedplot(hr$YearsSinceLastPromotion, y = hr$Attrition_D, xlab = "Years Since Last Promotion", ylab = "Attrition")
+binnedplot(hr$YearsWithCurrManager, y = hr$Attrition_D, xlab = "Years With Current Manager", ylab = "Attrition")
+```
+From the binned plots, there are some possible quadratic trends in "Age", "Monthly Income", "Years at Company", "Years in Current Role".
+For other variables, I did not find obvious non-linear associations between "Attrition" and predictors.
+We will make an original regression model first and then check the necessity of transformation after checking residual plots.
+
+# Fit an original logistic model
+```{r}
+# fit the model
+log0 = glm(Attrition_D ~ Agec + DailyRatec + DistanceFromHomec + HourlyRatec + MonthlyRatec + MonthlyIncomec + NumCompaniesWorkedc + PercentSalaryHikec + TrainingTimesLastYearc + YearsWithCurrManagerc + YearsSinceLastPromotionc + YearsInCurrentRolec + YearsAtCompanyc + as.factor(BusinessTravel_D) + as.factor(Department_D) + as.factor(Education) + as.factor(EducationField_D) + as.factor(EnvironmentSatisfaction) + as.factor(Gender_D) + as.factor(JobRole_D) + as.factor(JobInvolvement) + as.factor(JobLevel)  + as.factor(MaritalStatus_D) + as.factor(OverTime_D) + as.factor(PerformanceRating) + as.factor(RelationshipSatisfaction) + as.factor(StockOptionLevel) + as.factor(WorkLifeBalance), data = hr, family = binomial)
+summary(log0)
+```
+
+# Model Diagnostics
+### check binned residual plots for continous variables
+```{r}
+rawresid0 = hr$Attrition_D - fitted(log0)
+par(mfrow = c(2,2))
+binnedplot(hr$Agec, y = rawresid0, ylab = "residuals", xlab = "Date centered", main = "Binned residuals vs Age")
+binnedplot(hr$DailyRatec, y = rawresid0, ylab = "residuals", xlab = "Date centered", main = "Binned residuals vs Daily Rate")
+binnedplot(hr$DistanceFromHomec, y = rawresid0, ylab = "residuals", xlab = "Date centered", main = "Binned residuals vs Distance from home")
+binnedplot(hr$HourlyRatec, y = rawresid0, ylab = "residuals", xlab = "Date centered", main = "Binned residuals vs Hourly Rate")
+binnedplot(hr$MonthlyIncomec, y = rawresid0, ylab = "residuals", xlab = "Date centered", main = "Binned residuals vs Monthly Income")
+binnedplot(hr$MonthlyRatec, y = rawresid0, ylab = "residuals", xlab = "Date centered", main = "Binned residuals vs Monthly Rate")
+binnedplot(hr$NumCompaniesWorkedc, y = rawresid0, ylab = "residuals", xlab = "Date centered", main = "Binned residuals vs Numbers of companies worked")
+binnedplot(hr$PercentSalaryHikec, y = rawresid0, ylab = "residuals", xlab = "Date centered", main = "Binned residuals vs Percent of Salary Hike")
+binnedplot(hr$TrainingTimesLastYearc, y = rawresid0, ylab = "residuals", xlab = "Date centered", main = "Binned residuals vs Training Times Last Year")
+binnedplot(hr$YearsAtCompanyc, y = rawresid0, ylab = "residuals", xlab = "Date centered", main = "Binned residuals vs Years at Company")
+binnedplot(hr$YearsInCurrentRolec, y = rawresid0, ylab = "residuals", xlab = "Date centered", main = "Binned residuals vs Years in current role")
+binnedplot(hr$YearsSinceLastPromotionc, y = rawresid0, ylab = "residuals", xlab = "Date centered", main = "Binned residuals vs Years since last promotion")
+binnedplot(hr$YearsWithCurrManagerc, y = rawresid0, ylab = "residuals", xlab = "Date centered", main = "Binned residuals vs Years with current manager")
+```
+The residual plots for "Age", "Monthly Income", "Years at Company", "Years in Current Role" do not have non-linear trend. We do not need to do transformation for these variables.
+
+For some of these binned residual plots, there is one or two data points outside 95% range line. Since they are very close to the border, it is fine. 
+
+Apart from this, for other binned plots, residuals are quite close to 0 and all lies into the 95% range area. Also, we could not find any trends. This suggests that transformation is not necessary.
+
+### check categorial variabls
+```{r}
+tapply(rawresid0, hr$BusinessTravel_D, mean)
+table(hr$BusinessTravel_D)
+
+tapply(rawresid0, hr$Department_D, mean)
+table(hr$Department_D)
+
+tapply(rawresid0, hr$Education, mean)
+table(hr$Education)
+
+tapply(rawresid0, hr$EducationField_D, mean)
+table(hr$EducationField_D)
+
+tapply(rawresid0, hr$EnvironmentSatisfaction, mean)
+table(hr$EnvironmentSatisfaction)
+
+tapply(rawresid0, hr$Gender_D, mean)
+table(hr$EnvironmentSatisfaction)
+
+tapply(rawresid0, hr$JobInvolvement, mean)
+table(hr$JobInvolvement)
+
+tapply(rawresid0, hr$JobLevel, mean)
+table(hr$JobLevel)
+
+tapply(rawresid0, hr$JobRole_D, mean)
+table(hr$JobRole_D)
+
+tapply(rawresid0, hr$MaritalStatus_D, mean)
+table(hr$MaritalStatus_D)
+
+tapply(rawresid0, hr$OverTime, mean)
+table(hr$OverTime)
+
+tapply(rawresid0, hr$PerformanceRating, mean)
+table(hr$PerformanceRating)
+
+tapply(rawresid0, hr$RelationshipSatisfaction, mean)
+table(hr$RelationshipSatisfaction)
+
+tapply(rawresid0, hr$StockOptionLevel, mean)
+table(hr$StockOptionLevel)
+
+tapply(rawresid0, hr$WorkLifeBalance, mean)
+table(hr$WorkLifeBalance)
+```
+Not much patterns. Some differences could be explained by small data size. They are all close to zero which is great. 
+
+# Let's do the confusion matrix to check performance of the original model log0 
+
+Let's do the confusion matrix with 0.5 threshold and with 0.19 threshold (marginal percentage in data):
+```{r}
+threshold = 0.16
+table(hr$Attrition_D, log0$fitted > threshold)
+
+threshold = 0.4
+table(hr$Attrition_D, log0$fitted > threshold)
+
+threshold = 0.5
+table(hr$Attrition_D, log0$fitted > threshold)
+
+# when threshold is 0.5, when it is actually "yes", how ofen does is predict "yes"
+TP = 121
+FN = 116
+senitivity = TP/(TP+FN)
+senitivity
+
+# when threshold is 0.5, when it is actually "no", how ofen does is predict "no"
+TN = 1196
+FP = 37
+specificity = TN/(TN+FP)
+specificity
+```
+Some difference!  Seems a lot of predicted probabilities are in the 0.5 to 0.16  range, so cutoff matters.
+
+### look at ROC curve with the best threshold value
+```{r}
+roc(hr$Attrition_D, fitted(log0), plot=T, print.thres = "best", legacy.axes=T)
+```
+With the best threshold 0.273, the AUC is 0.8893 which is pretty good. Let's check if we could try to improve it a little bit.
+
+# Interaction
+Instead of trying all the interactions, we will searching for interactions which have scientific meanings. And possible interactions are as follows.
+
+## dummy * dummy
+attrition ~ relation satisfaction | gender
+attrition ~ Work life balance | gender
+attrition ~ Work life balance | marital status
+attrition ~ Work life balance | Department
+attrition ~ Work life balance | Job level
+attrition ~ Work life balance | Job Involvement
+attrition ~ Work life balance | Performance Rating
+attrition ~ Work life balance | Stock option level
+
+## continuous * dummy 
+attrition ~ Years since last promotion | gender
+attrition ~ Years since last promotion | department
+attrition ~ Years since last promotion | job role
+attrition ~ Years since last promotion | job level
+attrition ~ Years since last promotion | marital status
+attrition ~ Years since last promotion | worklifebalance
+attrition ~ Years since last promotion | job satisfaction
+attrition ~ Years since last promotion | job involvement
+attrition ~ Years since last promotion | performance rating
+
+attrition ~ monthly income | gender
+attrition ~ monthly income | department
+attrition ~ monthly income | job role
+attrition ~ monthly income | job level
+attrition ~ monthly income | worklifebalance
+attrition ~ monthly income | performance rating
+```{r include=FALSE}
+# rate of attrition for employee with different relation satisfaction among gender
+# attrition ~ relation satisfaction | gender
+table(hr$Gender_D)
+tapply(hr$Attrition_D[hr$Gender_D == "0"], hr$RelationshipSatisfaction[hr$Gender_D == "0"], mean)
+tapply(hr$Attrition_D[hr$Gender_D == "1"], hr$RelationshipSatisfaction[hr$Gender_D == "1"], mean)
+```
+No pattern could be detected. 
+```{r include=FALSE}
+# attrition ~ Work life balance | gender
+table(hr$Gender_D)
+tapply(hr$Attrition_D[hr$Gender_D == "0"], hr$WorkLifeBalance[hr$Gender_D == "0"], mean)
+tapply(hr$Attrition_D[hr$Gender_D == "1"], hr$WorkLifeBalance[hr$Gender_D == "1"], mean)
+```
+No pattern could be detected. 
+```{r include=FALSE}
+# attrition ~ Work life balance | marital status
+table(hr$MaritalStatus_D)
+tapply(hr$Attrition_D[hr$MaritalStatus_D == "0"], hr$WorkLifeBalance[hr$MaritalStatus_D == "0"], mean)
+tapply(hr$Attrition_D[hr$MaritalStatus_D == "1"], hr$WorkLifeBalance[hr$MaritalStatus_D == "1"], mean)
+tapply(hr$Attrition_D[hr$MaritalStatus_D == "2"], hr$WorkLifeBalance[hr$MaritalStatus_D == "2"], mean)
+```
+No pattern could be detected. 
+```{r include=FALSE}
+# attrition ~ Work life balance | Department
+table(hr$Department_D)
+tapply(hr$Attrition_D[hr$Department_D == "0"], hr$WorkLifeBalance[hr$Department_D == "0"], mean)
+tapply(hr$Attrition_D[hr$Department_D == "1"], hr$WorkLifeBalance[hr$Department_D == "1"], mean)
+tapply(hr$Attrition_D[hr$Department_D == "2"], hr$WorkLifeBalance[hr$Department_D == "2"], mean)
+```
+The rate of attrition for employees with different work life balance among different job levels has some difference in "0" level. Since the data point in this level is relatively small, this could be tolerant.
+```{r include=FALSE}
+# attrition ~ Work life balance | Job level
+table(hr$JobLevel)
+tapply(hr$Attrition_D[hr$JobLevel == "1"], hr$WorkLifeBalance[hr$JobLevel == "1"], mean)
+tapply(hr$Attrition_D[hr$JobLevel == "2"], hr$WorkLifeBalance[hr$JobLevel == "2"], mean)
+tapply(hr$Attrition_D[hr$JobLevel == "3"], hr$WorkLifeBalance[hr$JobLevel == "3"], mean)
+tapply(hr$Attrition_D[hr$JobLevel == "4"], hr$WorkLifeBalance[hr$JobLevel == "4"], mean)
+tapply(hr$Attrition_D[hr$JobLevel == "5"], hr$WorkLifeBalance[hr$JobLevel == "5"], mean)
+```
+For different job level, the change of rate of attrition are different. Interaction seems to exists.
+
+```{r include=FALSE}
+# attrition ~ Work life balance | Job Involvement
+table(hr$JobInvolvement)
+tapply(hr$Attrition_D[hr$JobInvolvement == "1"], hr$WorkLifeBalance[hr$JobInvolvement == "1"], mean)
+tapply(hr$Attrition_D[hr$JobInvolvement == "2"], hr$WorkLifeBalance[hr$JobInvolvement == "2"], mean)
+tapply(hr$Attrition_D[hr$JobInvolvement == "3"], hr$WorkLifeBalance[hr$JobInvolvement == "3"], mean)
+tapply(hr$Attrition_D[hr$JobInvolvement == "4"], hr$WorkLifeBalance[hr$JobInvolvement == "4"], mean)
+```
+The rate of attrition for employees with different work life balance among different job satisfaction level has some difference. Since the data point in this level is relatively small, this could be tolerant.
+
+```{r include=FALSE}
+# attrition ~ Work life balance | Performance Rating
+table(hr$PerformanceRating)
+tapply(hr$Attrition_D[hr$PerformanceRating == "3"], hr$WorkLifeBalance[hr$PerformanceRating == "3"], mean)
+tapply(hr$Attrition_D[hr$PerformanceRating == "4"], hr$WorkLifeBalance[hr$PerformanceRating == "4"], mean)
+```
+No pattern could be detected. 
+```{r include=FALSE}
+# attrition ~ Work life balance | Stock option level
+table(hr$StockOptionLevel)
+tapply(hr$Attrition_D[hr$StockOptionLevel == "0"], hr$WorkLifeBalance[hr$StockOptionLevel == "0"], mean)
+tapply(hr$Attrition_D[hr$StockOptionLevel == "1"], hr$WorkLifeBalance[hr$StockOptionLevel == "1"], mean)
+tapply(hr$Attrition_D[hr$StockOptionLevel == "2"], hr$WorkLifeBalance[hr$StockOptionLevel == "2"], mean)
+tapply(hr$Attrition_D[hr$StockOptionLevel == "3"], hr$WorkLifeBalance[hr$StockOptionLevel == "3"], mean)
+```
+The rate of attrition for employees with different work life balance among different stock optino level has some difference in "2", "3" level. Since the data point in these leveld are relatively small, this could be tolerant.
+
+## check interactions between "YeasSinceLasrPromotion" and other continuous variables
+```{r include=FALSE}
+# attrition ~ Years since last promotion | gender
+par(mfcol = c(1, 2))
+binnedplot(x = hr$YearsSinceLastPromotionc[hr$Gender_D == 0], y = hr$Attrition_D[hr$Gender_D == 0], main = "Female", xlab = "Years Since Last Promotion", ylab = "Attrition")
+binnedplot(x = hr$YearsSinceLastPromotionc[hr$Gender_D == 1], y = hr$Attrition_D[hr$Gender_D == 1], main = "Male", xlab = "Years Since Last Promotion", ylab = "Attrition")
+
+# attrition ~ Years since last promotion | department
+binnedplot(x = hr$YearsSinceLastPromotionc[hr$Department_D == 0], y = hr$Attrition_D[hr$Department_D == 0], main = "Human Resources ", xlab = "Years Since Last Promotion", ylab = "Attrition")
+binnedplot(x = hr$YearsSinceLastPromotionc[hr$Department_D == 1], y = hr$Attrition_D[hr$Department_D == 1], main = "Research & Development", xlab = "Years Since Last Promotion", ylab = "Attrition")
+binnedplot(x = hr$YearsSinceLastPromotionc[hr$Department_D == 2], y = hr$Attrition_D[hr$Department_D == 2], main = "Sales", xlab = "Years Since Last Promotion", ylab = "Attrition")
+
+# attrition ~ Years since last promotion | job role
+par(mfcol = c(3, 3))
+binnedplot(x = hr$YearsSinceLastPromotionc[hr$JobRole_D == 0], y = hr$Attrition_D[hr$JobRole_D == 0], main = "Sales Executive", xlab = "Years Since Last Promotion", ylab = "Attrition")
+binnedplot(x = hr$YearsSinceLastPromotionc[hr$JobRole_D == 1], y = hr$Attrition_D[hr$JobRole_D == 1], main = "Research Scientist", xlab = "Years Since Last Promotion", ylab = "Attrition")
+binnedplot(x = hr$YearsSinceLastPromotionc[hr$JobRole_D == 2], y = hr$Attrition_D[hr$JobRole_D == 2], main = "Laboratory Technician", xlab = "Years Since Last Promotion", ylab = "Attrition")
+binnedplot(x = hr$YearsSinceLastPromotionc[hr$JobRole_D == 3], y = hr$Attrition_D[hr$JobRole_D == 3], main = "Manufacturing Director", xlab = "Years Since Last Promotion", ylab = "Attrition")
+binnedplot(x = hr$YearsSinceLastPromotionc[hr$JobRole_D == 4], y = hr$Attrition_D[hr$JobRole_D == 4], main = "Healthcare Representative", xlab = "Years Since Last Promotion", ylab = "Attrition")
+binnedplot(x = hr$YearsSinceLastPromotionc[hr$JobRole_D == 5], y = hr$Attrition_D[hr$JobRole_D == 5], main = "Manager", xlab = "Years Since Last Promotion", ylab = "Attrition")
+binnedplot(x = hr$YearsSinceLastPromotionc[hr$JobRole_D == 6], y = hr$Attrition_D[hr$JobRole_D == 6], main = "Human Resources", xlab = "Years Since Last Promotion", ylab = "Attrition")
+binnedplot(x = hr$YearsSinceLastPromotionc[hr$JobRole_D == 7], y = hr$Attrition_D[hr$JobRole_D == 7], main = "Research Director", xlab = "Years Since Last Promotion", ylab = "Attrition")
+binnedplot(x = hr$YearsSinceLastPromotionc[hr$JobRole_D == 8], y = hr$Attrition_D[hr$JobRole_D == 8], main = "Sales Representative", xlab = "Years Since Last Promotion", ylab = "Attrition")
+
+
+# attrition ~ Years since last promotion | job level
+par(mfcol = c(2, 3))
+binnedplot(x = hr$YearsSinceLastPromotionc[hr$JobLevel == 1], y = hr$Attrition_D[hr$JobLevel == 1], main = "JobLevel == 1", xlab = "Years Since Last Promotion", ylab = "Attrition")
+binnedplot(x = hr$YearsSinceLastPromotionc[hr$JobLevel == 2], y = hr$Attrition_D[hr$JobLevel == 2], main = "JobLevel == 2", xlab = "Years Since Last Promotion", ylab = "Attrition")
+binnedplot(x = hr$YearsSinceLastPromotionc[hr$JobLevel == 3], y = hr$Attrition_D[hr$JobLevel == 3], main = "JobLevel == 3", xlab = "Years Since Last Promotion", ylab = "Attrition")
+binnedplot(x = hr$YearsSinceLastPromotionc[hr$JobLevel == 4], y = hr$Attrition_D[hr$JobLevel == 4], main = "JobLevel == 4", xlab = "Years Since Last Promotion", ylab = "Attrition")
+binnedplot(x = hr$YearsSinceLastPromotionc[hr$JobLevel == 5], y = hr$Attrition_D[hr$JobLevel == 5], main = "JobLevel == 5", xlab = "Years Since Last Promotion", ylab = "Attrition")
+
+# attrition ~ Years since last promotion | marital status
+par(mfcol = c(2, 2))
+binnedplot(x = hr$YearsSinceLastPromotionc[hr$MaritalStatus_D == 0], y = hr$Attrition_D[hr$MaritalStatus_D == 0], main = "Divorced", xlab = "Years Since Last Promotion", ylab = "Attrition")
+binnedplot(x = hr$YearsSinceLastPromotionc[hr$MaritalStatus_D == 1], y = hr$Attrition_D[hr$MaritalStatus_D == 1], main = "Married", xlab = "Years Since Last Promotion", ylab = "Attrition")
+binnedplot(x = hr$YearsSinceLastPromotionc[hr$MaritalStatus_D == 2], y =
+hr$Attrition_D[hr$MaritalStatus_D == 2], main = "Single", xlab = "Years Since Last Promotion", ylab = "Attrition")
+
+# attrition ~ Years since last promotion | worklifebalance
+par(mfcol = c(2, 2))
+binnedplot(x = hr$YearsSinceLastPromotionc[hr$WorkLifeBalance == 1], y = hr$Attrition_D[hr$WorkLifeBalance == 1], main = "WorkLifeBalance score = 1", xlab = "Years Since Last Promotion", ylab = "Attrition")
+binnedplot(x = hr$YearsSinceLastPromotionc[hr$WorkLifeBalance == 2], y = hr$Attrition_D[hr$WorkLifeBalance == 2], main = "WorkLifeBalance score = 2", xlab = "Years Since Last Promotion", ylab = "Attrition")
+binnedplot(x = hr$YearsSinceLastPromotionc[hr$WorkLifeBalance == 3], y = hr$Attrition_D[hr$WorkLifeBalance == 3], main = "WorkLifeBalance score = 3", xlab = "Years Since Last Promotion", ylab = "Attrition")
+binnedplot(x = hr$YearsSinceLastPromotionc[hr$WorkLifeBalance == 4], y = hr$Attrition_D[hr$WorkLifeBalance == 4], main = "WorkLifeBalance score = 4", xlab = "Years Since Last Promotion", ylab = "Attrition")
+
+# attrition ~ Years since last promotion | job involvement
+par(mfcol = c(2, 2))
+binnedplot(x = hr$YearsSinceLastPromotionc[hr$JobInvolvement == 1], y = hr$Attrition_D[hr$JobInvolvement == 1], main = "JobInvolvement score = 1", xlab = "Years Since Last Promotion", ylab = "Attrition")
+binnedplot(x = hr$YearsSinceLastPromotionc[hr$JobInvolvement == 2], y = hr$Attrition_D[hr$JobInvolvement == 2], main = "JobInvolvement score = 2", xlab = "Years Since Last Promotion", ylab = "Attrition")
+binnedplot(x = hr$YearsSinceLastPromotionc[hr$JobInvolvement == 3], y = hr$Attrition_D[hr$JobInvolvement == 3], main = "JobInvolvement score = 3", xlab = "Years Since Last Promotion", ylab = "Attrition")
+binnedplot(x = hr$YearsSinceLastPromotionc[hr$JobInvolvement == 4], y = hr$Attrition_D[hr$JobInvolvement == 4], main = "JobInvolvement score = 4", xlab = "Years Since Last Promotion", ylab = "Attrition")
+
+# attrition ~ Years since last promotion | performance rating
+par(mfcol = c(1, 2))
+binnedplot(x = hr$YearsSinceLastPromotionc[hr$PerformanceRating == 3], y = hr$Attrition_D[hr$PerformanceRating == 3], main = "PerformanceRating score = 3", xlab = "Years Since Last Promotion", ylab = "Attrition")
+binnedplot(x = hr$YearsSinceLastPromotionc[hr$PerformanceRating == 4], y = hr$Attrition_D[hr$PerformanceRating == 4], main = "PerformanceRating score = 4", xlab = "Years Since Last Promotion", ylab = "Attrition")
+```
+There are no obivious patterns in these binned plots, except for "performance rating" and "job role" and "department". We will try interaction between smoke*mht. 
+
+## check interactions between "monthly income" and other continuous variables
+```{r echo=TRUE}
+# attrition ~ Monthly Income | gender
+par(mfcol = c(1, 2))
+binnedplot(x = hr$MonthlyIncome[hr$Gender_D == 0], y = hr$Attrition_D[hr$Gender_D == 0], main = "Female", xlab = "Monthly Income", ylab = "Attrition")
+binnedplot(x = hr$MonthlyIncome[hr$Gender_D == 1], y = hr$Attrition_D[hr$Gender_D == 1], main = "Male", xlab = "Monthly Income", ylab = "Attrition")
+
+# attrition ~ Monthly Income | department
+binnedplot(x = hr$MonthlyIncome[hr$Department_D == 0], y = hr$Attrition_D[hr$Department_D == 0], main = "Human Resources ", xlab = "Monthly Income", ylab = "Attrition")
+binnedplot(x = hr$MonthlyIncome[hr$Department_D == 1], y = hr$Attrition_D[hr$Department_D == 1], main = "Research & Development", xlab = "Monthly Income", ylab = "Attrition")
+binnedplot(x = hr$MonthlyIncome[hr$Department_D == 2], y = hr$Attrition_D[hr$Department_D == 2], main = "Sales", xlab = "Monthly Income", ylab = "Attrition")
+
+# attrition ~ Monthly Income | job role
+par(mfcol = c(3, 3))
+binnedplot(x = hr$MonthlyIncome[hr$JobRole_D == 0], y = hr$Attrition_D[hr$JobRole_D == 0], main = "Sales Executive", xlab = "Monthly Income", ylab = "Attrition")
+binnedplot(x = hr$MonthlyIncome[hr$JobRole_D == 1], y = hr$Attrition_D[hr$JobRole_D == 1], main = "Research Scientist", xlab = "Monthly Income", ylab = "Attrition")
+binnedplot(x = hr$MonthlyIncome[hr$JobRole_D == 2], y = hr$Attrition_D[hr$JobRole_D == 2], main = "Laboratory Technician", xlab = "Monthly Income", ylab = "Attrition")
+binnedplot(x = hr$MonthlyIncome[hr$JobRole_D == 3], y = hr$Attrition_D[hr$JobRole_D == 3], main = "Manufacturing Director", xlab = "Monthly Income", ylab = "Attrition")
+binnedplot(x = hr$MonthlyIncome[hr$JobRole_D == 4], y = hr$Attrition_D[hr$JobRole_D == 4], main = "Healthcare Representative", xlab = "Monthly Income", ylab = "Attrition")
+binnedplot(x = hr$MonthlyIncome[hr$JobRole_D == 5], y = hr$Attrition_D[hr$JobRole_D == 5], main = "Manager", xlab = "Monthly Income", ylab = "Attrition")
+binnedplot(x = hr$MonthlyIncome[hr$JobRole_D == 6], y = hr$Attrition_D[hr$JobRole_D == 6], main = "Human Resources", xlab = "Monthly Income", ylab = "Attrition")
+binnedplot(x = hr$MonthlyIncome[hr$JobRole_D == 7], y = hr$Attrition_D[hr$JobRole_D == 7], main = "Research Director", xlab = "Monthly Income", ylab = "Attrition")
+binnedplot(x = hr$MonthlyIncome[hr$JobRole_D == 8], y = hr$Attrition_D[hr$JobRole_D == 8], main = "Sales Representative", xlab = "Monthly Income", ylab = "Attrition")
+
+
+# attrition ~ Monthly Income | job level
+par(mfcol = c(2, 3))
+binnedplot(x = hr$MonthlyIncome[hr$JobLevel == 1], y = hr$Attrition_D[hr$JobLevel == 1], main = "JobLevel == 1", xlab = "Monthly Income", ylab = "Attrition")
+binnedplot(x = hr$MonthlyIncome[hr$JobLevel == 2], y = hr$Attrition_D[hr$JobLevel == 2], main = "JobLevel == 2", xlab = "Monthly Income", ylab = "Attrition")
+binnedplot(x = hr$MonthlyIncome[hr$JobLevel == 3], y = hr$Attrition_D[hr$JobLevel == 3], main = "JobLevel == 3", xlab = "Monthly Income", ylab = "Attrition")
+binnedplot(x = hr$MonthlyIncome[hr$JobLevel == 4], y = hr$Attrition_D[hr$JobLevel == 4], main = "JobLevel == 4", xlab = "Monthly Income", ylab = "Attrition")
+binnedplot(x = hr$MonthlyIncome[hr$JobLevel == 5], y = hr$Attrition_D[hr$JobLevel == 5], main = "JobLevel == 5", xlab = "Monthly Income", ylab = "Attrition")
+
+# attrition ~ Monthly Income | marital status
+par(mfcol = c(2, 2))
+binnedplot(x = hr$MonthlyIncome[hr$MaritalStatus_D == 0], y = hr$Attrition_D[hr$MaritalStatus_D == 0], main = "Divorced", xlab = "Monthly Income", ylab = "Attrition")
+binnedplot(x = hr$MonthlyIncome[hr$MaritalStatus_D == 1], y = hr$Attrition_D[hr$MaritalStatus_D == 1], main = "Married", xlab = "Monthly Income", ylab = "Attrition")
+binnedplot(x = hr$MonthlyIncome[hr$MaritalStatus_D == 2], y =
+hr$Attrition_D[hr$MaritalStatus_D == 2], main = "Single", xlab = "Monthly Income", ylab = "Attrition")
+
+# attrition ~ Monthly Income | worklifebalance
+par(mfcol = c(2, 2))
+binnedplot(x = hr$MonthlyIncome[hr$WorkLifeBalance == 1], y = hr$Attrition_D[hr$WorkLifeBalance == 1], main = "WorkLifeBalance score = 1", xlab = "Monthly Income", ylab = "Attrition")
+binnedplot(x = hr$MonthlyIncome[hr$WorkLifeBalance == 2], y = hr$Attrition_D[hr$WorkLifeBalance == 2], main = "WorkLifeBalance score = 2", xlab = "Monthly Income", ylab = "Attrition")
+binnedplot(x = hr$MonthlyIncome[hr$WorkLifeBalance == 3], y = hr$Attrition_D[hr$WorkLifeBalance == 3], main = "WorkLifeBalance score = 3", xlab = "Monthly Income", ylab = "Attrition")
+binnedplot(x = hr$MonthlyIncome[hr$WorkLifeBalance == 4], y = hr$Attrition_D[hr$WorkLifeBalance == 4], main = "WorkLifeBalance score = 4", xlab = "Monthly Income", ylab = "Attrition")
+
+# attrition ~ Monthly Income | job involvement
+par(mfcol = c(2, 2))
+binnedplot(x = hr$MonthlyIncome[hr$JobInvolvement == 1], y = hr$Attrition_D[hr$JobInvolvement == 1], main = "JobInvolvement score = 1", xlab = "Monthly Income", ylab = "Attrition")
+binnedplot(x = hr$MonthlyIncome[hr$JobInvolvement == 2], y = hr$Attrition_D[hr$JobInvolvement == 2], main = "JobInvolvement score = 2", xlab = "Monthly Income", ylab = "Attrition")
+binnedplot(x = hr$MonthlyIncome[hr$JobInvolvement == 3], y = hr$Attrition_D[hr$JobInvolvement == 3], main = "JobInvolvement score = 3", xlab = "Monthly Income", ylab = "Attrition")
+binnedplot(x = hr$MonthlyIncome[hr$JobInvolvement == 4], y = hr$Attrition_D[hr$JobInvolvement == 4], main = "JobInvolvement score = 4", xlab = "Monthly Income", ylab = "Attrition")
+
+# attrition ~ Monthly Income | performance rating
+par(mfcol = c(1, 2))
+binnedplot(x = hr$MonthlyIncome[hr$PerformanceRating == 3], y = hr$Attrition_D[hr$PerformanceRating == 3], main = "PerformanceRating score = 3", xlab = "Monthly Income", ylab = "Attrition")
+binnedplot(x = hr$MonthlyIncome[hr$PerformanceRating == 4], y = hr$Attrition_D[hr$PerformanceRating == 4], main = "PerformanceRating score = 4", xlab = "Monthly Income", ylab = "Attrition")
+```
+
+## fit regression models with different interactions
+
+### with interaction worklifebalance*marital status
+```{r include=FALSE}
+logi1 = glm(Attrition_D ~ Agec + DailyRatec + DistanceFromHomec + HourlyRatec + MonthlyRatec + MonthlyIncomec + NumCompaniesWorkedc + PercentSalaryHikec + TrainingTimesLastYearc + YearsWithCurrManagerc + YearsSinceLastPromotionc + YearsInCurrentRolec + YearsAtCompanyc + as.factor(BusinessTravel_D) + as.factor(Department_D) + as.factor(Education) + as.factor(EducationField_D) + as.factor(EnvironmentSatisfaction) + as.factor(Gender_D) + as.factor(JobRole_D) + as.factor(JobInvolvement) + as.factor(JobLevel) + as.factor(MaritalStatus_D) * as.factor(WorkLifeBalance) + as.factor(OverTime_D) + as.factor(PerformanceRating) + as.factor(RelationshipSatisfaction) + as.factor(StockOptionLevel), data = hr, family = binomial)
+summary(logi1)
+anova(log0, logi1, test = "Chisq")
+```
+
+### with interaction Years Since Last Promotion * performance rating
+```{r include=FALSE}
+logi2 = glm(Attrition_D ~ Agec + DailyRatec + DistanceFromHomec + HourlyRatec + MonthlyRatec + MonthlyIncomec + NumCompaniesWorkedc + PercentSalaryHikec + TrainingTimesLastYearc + YearsWithCurrManagerc + YearsSinceLastPromotionc*as.factor(PerformanceRating) + YearsInCurrentRolec + YearsAtCompanyc + as.factor(BusinessTravel_D) + as.factor(Department_D) + as.factor(Education) + as.factor(EducationField_D) + as.factor(EnvironmentSatisfaction) + as.factor(Gender_D) + as.factor(JobRole_D) + as.factor(JobInvolvement) + as.factor(JobLevel) + as.factor(MaritalStatus_D) + as.factor(OverTime_D) + as.factor(RelationshipSatisfaction) + as.factor(StockOptionLevel) + as.factor(WorkLifeBalance), data = hr, family = binomial)
+summary(logi2)
+anova(log0, logi2, test = "Chisq")
+```
+
+### with interaction Years Since Last Promotion * job role
+```{r include=FALSE}
+logi3 = glm(Attrition_D ~ Agec + DailyRatec + DistanceFromHomec + HourlyRatec + MonthlyRatec + MonthlyIncomec + NumCompaniesWorkedc + PercentSalaryHikec + TrainingTimesLastYearc + YearsWithCurrManagerc + YearsSinceLastPromotionc*as.factor(JobRole_D)+ YearsInCurrentRolec + YearsAtCompanyc + as.factor(BusinessTravel_D) + as.factor(Department_D) + as.factor(Education) + as.factor(EducationField_D) + as.factor(EnvironmentSatisfaction) + as.factor(Gender_D) + as.factor(JobInvolvement) + as.factor(JobLevel) + as.factor(MaritalStatus_D) + as.factor(OverTime_D) + as.factor(PerformanceRating) + as.factor(RelationshipSatisfaction) + as.factor(StockOptionLevel) + as.factor(WorkLifeBalance), data = hr, family = binomial)
+summary(logi3)
+anova(log0, logi3, test = "Chisq")
+```
+
+### with interaction Years Since Last Promotion * department
+```{r include=FALSE}
+logi4 = glm(Attrition_D ~ Agec + DailyRatec + DistanceFromHomec + HourlyRatec + MonthlyRatec + MonthlyIncomec + NumCompaniesWorkedc + PercentSalaryHikec + TrainingTimesLastYearc + YearsWithCurrManagerc + YearsSinceLastPromotionc * as.factor(Department_D) + YearsInCurrentRolec + YearsAtCompanyc + as.factor(BusinessTravel_D) + as.factor(Education) + as.factor(EducationField_D) + as.factor(EnvironmentSatisfaction) + as.factor(Gender_D) + as.factor(JobRole_D) + as.factor(JobInvolvement) + as.factor(JobLevel) + as.factor(MaritalStatus_D) + as.factor(OverTime_D) + as.factor(PerformanceRating) + as.factor(RelationshipSatisfaction) + as.factor(StockOptionLevel) + as.factor(WorkLifeBalance), data = hr, family = binomial)
+summary(logi4)
+anova(log0, logi4, test = "Chisq")
+```
+
+### with interaction Monthlyincome * job role
+```{r}
+logi5 = glm(Attrition_D ~ Agec + DailyRatec + DistanceFromHomec + HourlyRatec + MonthlyRatec + MonthlyIncomec*as.factor(JobRole_D) + NumCompaniesWorkedc + PercentSalaryHikec + TrainingTimesLastYearc + YearsWithCurrManagerc + YearsSinceLastPromotionc + as.factor(Department_D) + YearsInCurrentRolec + YearsAtCompanyc + as.factor(BusinessTravel_D) + as.factor(Education) + as.factor(EducationField_D) + as.factor(EnvironmentSatisfaction) + as.factor(Gender_D)  + as.factor(JobInvolvement) + as.factor(JobLevel) + as.factor(MaritalStatus_D) + as.factor(OverTime_D) + as.factor(PerformanceRating) + as.factor(RelationshipSatisfaction) + as.factor(StockOptionLevel) + as.factor(WorkLifeBalance), data = hr, family = binomial)
+summary(logi5)
+anova(log0, logi5, test = "Chisq")
+```
+
+### with interaction Monthlyincome * joblevel
+```{r}
+logi6 = glm(Attrition_D ~ Agec + DailyRatec + DistanceFromHomec + HourlyRatec + MonthlyRatec + MonthlyIncomec*as.factor(JobLevel) + NumCompaniesWorkedc + PercentSalaryHikec + TrainingTimesLastYearc + YearsWithCurrManagerc + YearsSinceLastPromotionc + as.factor(Department_D) + YearsInCurrentRolec + YearsAtCompanyc + as.factor(BusinessTravel_D) + as.factor(Education) + as.factor(EducationField_D) + as.factor(EnvironmentSatisfaction) + as.factor(Gender_D) + as.factor(JobRole_D) + as.factor(JobInvolvement)  + as.factor(MaritalStatus_D) + as.factor(OverTime_D) + as.factor(PerformanceRating) + as.factor(RelationshipSatisfaction) + as.factor(StockOptionLevel) + as.factor(WorkLifeBalance), data = hr, family = binomial)
+summary(logi6)
+anova(log0, logi6, test = "Chisq")
+```
+Among all the results of anova test, only interaction between monthlyincome&jobrole and monthly income&job level is statistically significant. We will keep it in the final model.
+
+# The final model
+```{r}
+logfinal = glm(Attrition_D ~ MonthlyIncomec*as.factor(JobLevel) + MonthlyIncomec*as.factor(JobRole_D) +  Agec + DailyRatec + DistanceFromHomec + HourlyRatec + MonthlyRatec + NumCompaniesWorkedc + PercentSalaryHikec + TrainingTimesLastYearc + YearsWithCurrManagerc + YearsSinceLastPromotionc + as.factor(Department_D) + YearsInCurrentRolec + YearsAtCompanyc + as.factor(BusinessTravel_D) + as.factor(Education) + as.factor(EducationField_D) + as.factor(EnvironmentSatisfaction) + as.factor(Gender_D) + as.factor(JobInvolvement) + as.factor(MaritalStatus_D) + as.factor(OverTime_D) + as.factor(PerformanceRating) + as.factor(RelationshipSatisfaction) + as.factor(StockOptionLevel) + as.factor(WorkLifeBalance), data = hr, family = binomial)
+summary(logfinal)
+anova(log0, logfinal, test = "Chisq")
+```
+
+# Model Diagnostics
+### check binned residual plots for continous variables
+```{r}
+rawresidfinal = hr$Attrition_D - fitted(logfinal)
+par(mfrow = c(3,5))
+binnedplot(hr$Agec, y = rawresidfinal, ylab = "residuals", xlab = "Date centered", main = "Binned residuals vs Age")
+binnedplot(hr$DailyRatec, y = rawresidfinal, ylab = "residuals", xlab = "Date centered", main = "Binned residuals vs Daily Rate")
+binnedplot(hr$DistanceFromHomec, y = rawresidfinal, ylab = "residuals", xlab = "Date centered", main = "Binned residuals vs Distance from home")
+binnedplot(hr$HourlyRatec, y = rawresidfinal, ylab = "residuals", xlab = "Date centered", main = "Binned residuals vs Hourly Rate")
+binnedplot(hr$MonthlyIncomec, y = rawresidfinal, ylab = "residuals", xlab = "Date centered", main = "Binned residuals vs Monthly Income")
+binnedplot(hr$MonthlyRatec, y = rawresidfinal, ylab = "residuals", xlab = "Date centered", main = "Binned residuals vs Monthly Rate")
+binnedplot(hr$NumCompaniesWorkedc, y = rawresidfinal, ylab = "residuals", xlab = "Date centered", main = "Binned residuals vs Numbers of companies worked")
+binnedplot(hr$PercentSalaryHikec, y = rawresidfinal, ylab = "residuals", xlab = "Date centered", main = "Binned residuals vs Percent of Salary Hike")
+binnedplot(hr$TrainingTimesLastYearc, y = rawresidfinal, ylab = "residuals", xlab = "Date centered", main = "Binned residuals vs Training Times Last Year")
+binnedplot(hr$YearsAtCompanyc, y = rawresidfinal, ylab = "residuals", xlab = "Date centered", main = "Binned residuals vs Years at Company")
+binnedplot(hr$YearsInCurrentRolec, y = rawresidfinal, ylab = "residuals", xlab = "Date centered", main = "Binned residuals vs Years in current role")
+binnedplot(hr$YearsSinceLastPromotionc, y = rawresidfinal, ylab = "residuals", xlab = "Date centered", main = "Binned residuals vs Years since last promotion")
+binnedplot(hr$YearsWithCurrManagerc, y = rawresidfinal, ylab = "residuals", xlab = "Date centered", main = "Binned residuals vs Years with current manager")
+```
+The residual plots do not have non-linear trend. We do not need to do transformation for these variables. For some of these binned residual plots, there is one or two data points outside 95% range line. Since they are very close to the border, it is fine. Apart from this, for other binned plots, residuals are quite close to 0 and all lies into the 95% range area. Also, we could not find any trends. In general, residual plots are good.
+
+### check categorial variabls
+```{r}
+tapply(rawresidfinal, hr$BusinessTravel_D, mean)
+table(hr$BusinessTravel_D)
+
+tapply(rawresidfinal, hr$Department_D, mean)
+table(hr$Department_D)
+
+tapply(rawresidfinal, hr$Education, mean)
+table(hr$Education)
+
+tapply(rawresidfinal, hr$EducationField_D, mean)
+table(hr$EducationField_D)
+
+tapply(rawresidfinal, hr$EnvironmentSatisfaction, mean)
+table(hr$EnvironmentSatisfaction)
+
+tapply(rawresidfinal, hr$Gender_D, mean)
+table(hr$EnvironmentSatisfaction)
+
+tapply(rawresidfinal, hr$JobInvolvement, mean)
+table(hr$JobInvolvement)
+
+tapply(rawresidfinal, hr$JobLevel, mean)
+table(hr$JobLevel)
+
+tapply(rawresidfinal, hr$JobRole_D, mean)
+table(hr$JobRole_D)
+
+tapply(rawresidfinal, hr$MaritalStatus_D, mean)
+table(hr$MaritalStatus_D)
+
+tapply(rawresidfinal, hr$OverTime, mean)
+table(hr$OverTime)
+
+tapply(rawresidfinal, hr$PerformanceRating, mean)
+table(hr$PerformanceRating)
+
+tapply(rawresidfinal, hr$RelationshipSatisfaction, mean)
+table(hr$RelationshipSatisfaction)
+
+tapply(rawresidfinal, hr$StockOptionLevel, mean)
+table(hr$StockOptionLevel)
+
+tapply(rawresidfinal, hr$WorkLifeBalance, mean)
+table(hr$WorkLifeBalance)
+```
+Not much patterns. Some differences could be explained by small data size. They are all close to zero which is great. 
+
+# Let's do the confusion matrix to check performance of the final model "logfinal" 
+
+Let's do the confusion matrix with 0.5 threshold and with 0.16 threshold (marginal percentage in data):
+```{r}
+threshold = 0.16
+table(hr$Attrition_D, logfinal$fitted > threshold)
+
+threshold = 0.4
+table(hr$Attrition_D, logfinal$fitted > threshold)
+
+threshold = 0.5
+table(hr$Attrition_D, logfinal$fitted > threshold)
+
+# when threshold is 0.5, when it is actually "yes", how ofen does is predict "yes"
+TP = 125
+FN = 112
+senitivity = TP/(TP+FN)
+senitivity
+
+# when threshold is 0.5, when it is actually "no", how ofen does is predict "no"
+TN = 1197
+FP = 36
+specificity = TN/(TN+FP)
+specificity
+```
+Some difference!  Seems a lot of predicted probabilities are in the 0.5 to 0.16 range, so cutoff matters.
+
+# Look at ROC curve with the best threshold value
+```{r}
+roc(hr$Attrition_D, fitted(logfinal), plot=T, print.thres = "best", legacy.axes=T)
+```
+With the best threshold 0.276, the AUC is 0.8978 which is pretty good. Compared to the original model which AUC is 0.8893, the final model has been improved a little bit. We will use this as the final model.
+
+# Model interpretation
+```{r}
+summary(logfinal)
+```
+
+```{r}
+CI = data.frame(confint.default(logfinal))
+names(CI) = c("lower","upper")
+expCI = data.frame(exp(confint.default(logfinal)))
+names(expCI) = c("lower","upper")
+confint.default(logfinal)
+```
+
+# Confidence Interval plot
+```{r eval=FALSE, include=FALSE}
+predictors = rownames(CI)
+results = data.frame(cbind(predictors,exp(summary(logfinal)$coef[,1]),expCI))
+names(results) = c("Predictors","est","lower","upper")
+ggplot(data = results, aes(predictors, est, ylim = lower, ymax = upper)) +
+ geom_pointrange(aes(predictors, est, ymin = results$lower, ymax = results$upper)) +
+ geom_errorbar(aes(ymin = lower, ymax = upper), width = 0.8, cex = 0.5) +
+ coord_flip(ylim = c(0.5, 1.5))
+```
+# Interpretation
+
+Intercept: 
+The mean logit of attrition of a divorced female who has all the categorical variables at baseline and with all the continuous variables at mean, is -1.365e+01. 
+
+Coefficient:
+(1)For continuous predictor, we interpret in this way. For example: when we keep other predictors constant, years since the employees received the latest promotion increased by 1 unit, we could expected mean of logit of attrition increased by 1.566e-01.
+(2)For categorical predictor, we interpret in this way. For example: When we keep other predictors constant, change from ???low job involvement??? to ???Medium job involvement??? we could expected mean of logit of preterm decreased by 1.252e+00.
+
+CI:
+When we keep other predictors constant, change from employee who don't work overtime to overtime, we could expected mean of logit of attrition increased by 2.237e+00, with a 95% CI of ( 1.816103e+00  2.658305e+00).
+
+We can interpret other predictors in the same way. 
+
+
+
+
